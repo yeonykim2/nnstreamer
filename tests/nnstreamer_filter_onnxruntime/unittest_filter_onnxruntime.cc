@@ -244,7 +244,6 @@ TEST (nnstreamerFilterOnnxRuntime, invoke00)
   ret = sp->open (&prop, &data);
   EXPECT_EQ (ret, 0);
 
-
     /** invoke successful */
   ret = sp->invoke (NULL, NULL, data, &input, &output);
   EXPECT_EQ (ret, 0);
@@ -404,7 +403,7 @@ TEST (nnstreamerFilterOnnxRuntime, error00_n)
       "models", "incorrect_path.onnx", NULL);
  
   /* Create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=224,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" custom=device_type:dummy ! fakesink",
+  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=224,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
       model_file);
   gstpipe = gst_parse_launch (pipeline, &err);
 
@@ -444,7 +443,7 @@ TEST (nnstreamerFilterOnnxRuntime, error01_n)
   ASSERT_TRUE (_GetModelFilePath (&test_model));
 
   /* Create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=240,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" custom=device_type:dummy ! fakesink",
+  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=240,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
       test_model);
 
   gstpipe = gst_parse_launch (pipeline, &err);
