@@ -20,7 +20,7 @@ _GetModelFilePath (gchar **model_file)
 {
   const gchar *src_root = g_getenv ("NNSTREAMER_SOURCE_ROOT_PATH");
   gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
-  std::string model_name = "mobilenet_v2_1.0_224.onnx";
+  std::string model_name = "mobilenet_v2_float.onnx";
 
   *model_file = g_build_filename (
       root_path, "tests", "test_models", "models", model_name.c_str (), NULL);
@@ -40,7 +40,7 @@ _GetCatPngFilePath (gchar **input_file)
 {
   const gchar *src_root = g_getenv ("NNSTREAMER_SOURCE_ROOT_PATH");
   gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
-  std::string input_file_name = "cat.png";
+  std::string input_file_name = "orange.png";
 
   *input_file = g_build_filename (
       root_path, "tests", "test_models", "data", input_file_name.c_str (), NULL);

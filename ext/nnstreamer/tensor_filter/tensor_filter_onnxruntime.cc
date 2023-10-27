@@ -38,6 +38,8 @@ class onnxruntime_subplugin final : public tensor_filter_subplugin
   GstTensorsInfo outputInfo; /**< Output tensors metadata */
 
   Ort::Session session;
+  Ort::SessionOptions sessionOptions;
+  Ort::Env env;
   Ort::MemoryInfo memInfo;
 
   // tensor setting
@@ -85,7 +87,7 @@ const char *onnxruntime_subplugin::name = "onnxruntime";
  */
 onnxruntime_subplugin::onnxruntime_subplugin ()
     : tensor_filter_subplugin (), empty_model (true), model_path (nullptr), 
-    session (nullptr), memInfo (nullptr), 
+    session (nullptr), sessionOptions(nullptr), env(nullptr), memInfo (nullptr), 
     input_num_tensors (0U), input_names (), input_shapes (), input_types (), input_names_allocated_strings (), input_tensors (),
     output_num_tensors (0U), output_names (), output_shapes (), output_types (), output_names_allocated_strings (), output_tensors ()
 {
@@ -115,6 +117,14 @@ onnxruntime_subplugin::cleanup ()
 
   if (session) {
     session = Ort::Session{nullptr}; /* it's already freed with session */
+  }
+
+  if(sessionOptions) {
+    sessionOptions = Ort::SessionOptions{ nullptr };
+  }
+
+  if(env) {
+    env = Ort::Env{ nullptr };
   }
 
   if(memInfo) {
@@ -251,7 +261,7 @@ void
 onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop)
 {
   size_t i;
-  Ort::SessionOptions sessionOptions;
+  // Ort::SessionOptions sessionOptions;
 
   if (!empty_model) {
     /* Already opened */
@@ -287,7 +297,8 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
   }
 
   /** Read a model */
-  Ort::Env env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
+  // Ort::Env env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
+  env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
   Ort::AllocatorWithDefaultOptions allocator;
   session = Ort::Session(env, model_path, sessionOptions);
   
@@ -409,7 +420,7 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
   }
 
   empty_model = false;
-  sessionOptions = Ort::SessionOptions{ nullptr };
+  // sessionOptions = Ort::SessionOptions{ nullptr };
   allocator = Ort::AllocatorWithDefaultOptions{ nullptr }; /* delete unique_ptr */
 
   printf ("onnxruntime configure instance setting \n");
@@ -423,6 +434,12 @@ onnxruntime_subplugin::invoke (const GstTensorMemory *input, GstTensorMemory *ou
 {
   size_t i;
   assert (!empty_model);
+    /** Read a model */
+  // Ort::SessionOptions sessionOptions;
+  // Ort::Env env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
+  // Ort::AllocatorWithDefaultOptions allocator;
+  // session = Ort::Session(env, model_path, sessionOptions);
+
   input_tensors.clear();
   output_tensors.clear();
 
