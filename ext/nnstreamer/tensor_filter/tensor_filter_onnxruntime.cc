@@ -1,5 +1,24 @@
+/* SPDX-License-Identifier: LGPL-2.1-only */
+/**
+ * NNStreamer tensor_filter, sub-plugin for onnxruntime
+ * Copyright (C) 2023 Suyeon Kim <suyeon5.kim@samsung.com>
+ */
+/**
+ * @file	tensor_filter_onnxruntime.cc
+ * @date	30 Oct 2023
+ * @brief	NNStreamer tensor-filter sub-plugin for ONNXRuntime
+ * @see		http://github.com/nnstreamer/nnstreamer
+ * @see   https://onnxruntime.ai/
+ * @author	Suyeon Kim <suyeon5.kim@samsung.com>
+ * @bug		No known bugs except for NYI items
+ *
+ * This is the per-NN-framework plugin (onnxruntime) for tensor_filter.
+ *
+ * @todo Only float32 is allowed for input/output. Other types are NYI.
+ * @todo Only CPU is supported. GPU and other hardware support is NYI.
+ */
+
 #include <iostream>
-#include <sstream>
 
 #include <glib.h>
 #include <nnstreamer_cppplugin_api_filter.hh>
@@ -8,14 +27,6 @@
 #include <tensor_common.h>
 
 #include <core/session/onnxruntime_cxx_api.h>
-
-
-/**
- * @brief Macro for debug mode.
- */
-#ifndef DBG
-#define DBG FALSE
-#endif
 
 
 namespace nnstreamer
@@ -41,25 +52,25 @@ class onnxruntime_subplugin final : public tensor_filter_subplugin
   Ort::SessionOptions sessionOptions;
   Ort::Env env;
   Ort::MemoryInfo memInfo;
-  
+
   std::size_t input_num_tensors;
-  std::vector<const char*> input_names;
+  std::vector<const char *> input_names;
   std::vector<std::vector<int64_t>> input_shapes;
   std::vector<ONNXTensorElementDataType> input_types;
   std::vector<Ort::AllocatedStringPtr> input_names_allocated_strings;
   std::vector<Ort::Value> input_tensors; /**< Input tensor from model */
 
   std::size_t output_num_tensors;
-  std::vector<const char*> output_names;
+  std::vector<const char *> output_names;
   std::vector<std::vector<int64_t>> output_shapes;
   std::vector<ONNXTensorElementDataType> output_types;
   std::vector<Ort::AllocatedStringPtr> output_names_allocated_strings;
   std::vector<Ort::Value> output_tensors; /**< Output tensor from model */
 
-  static const char *name; 
+  static const char *name;
   static onnxruntime_subplugin *registeredRepresentation;
 
-  void cleanup();
+  void cleanup ();
   int getTensorDim (tensor_dim &dim, std::vector<int64_t> shapes, size_t numDims);
   int getTensorType (ONNXTensorElementDataType _type, tensor_type *type);
 
@@ -84,21 +95,17 @@ const char *onnxruntime_subplugin::name = "onnxruntime";
  * @brief Constructor for onnxruntime_subplugin.
  */
 onnxruntime_subplugin::onnxruntime_subplugin ()
-    : tensor_filter_subplugin (), empty_model (true), model_path (nullptr),
-    session (nullptr), sessionOptions(nullptr), env(nullptr), memInfo (nullptr),
-    input_num_tensors (0U), input_names (), input_shapes (), input_types (), input_names_allocated_strings (), input_tensors (),
-    output_num_tensors (0U), output_names (), output_shapes (), output_types (), output_names_allocated_strings (), output_tensors ()
+    : session{ nullptr }, memInfo{ nullptr }
 {
   gst_tensors_info_init (std::addressof (inputInfo));
   gst_tensors_info_init (std::addressof (outputInfo));
 
-  input_tensors.reserve(NNS_TENSOR_SIZE_LIMIT);
-  output_tensors.reserve(NNS_TENSOR_SIZE_LIMIT);
-
+  input_tensors.reserve (NNS_TENSOR_SIZE_LIMIT);
+  output_tensors.reserve (NNS_TENSOR_SIZE_LIMIT);
 }
 
-/** 
- * @brief Destructor for onnxruntime_subplugin. 
+/**
+ * @brief Destructor for onnxruntime_subplugin.
  */
 onnxruntime_subplugin::~onnxruntime_subplugin ()
 {
@@ -114,38 +121,38 @@ onnxruntime_subplugin::cleanup ()
     return; /* Nothing to do if it is an empty model */
 
   if (session) {
-    session = Ort::Session{nullptr}; /* it's already freed with session */
+    session = Ort::Session{ nullptr }; /* it's already freed with session */
   }
 
-  if(sessionOptions) {
+  if (sessionOptions) {
     sessionOptions = Ort::SessionOptions{ nullptr };
   }
 
-  if(env) {
+  if (env) {
     env = Ort::Env{ nullptr };
   }
 
-  if(memInfo) {
-    memInfo = Ort::MemoryInfo{nullptr}; /* it's already freed with meminfo */
+  if (memInfo) {
+    memInfo = Ort::MemoryInfo{ nullptr }; /* it's already freed with meminfo */
   }
 
   gst_tensors_info_free (std::addressof (inputInfo));
   gst_tensors_info_free (std::addressof (outputInfo));
 
   input_num_tensors = 0;
-  input_names.clear();
-  input_shapes.clear();
-  input_types.clear();
-  input_names_allocated_strings.clear();
-  input_tensors.clear();
+  input_names.clear ();
+  input_shapes.clear ();
+  input_types.clear ();
+  input_names_allocated_strings.clear ();
+  input_tensors.clear ();
 
   output_num_tensors = 0;
-  output_names.clear();
-  output_shapes.clear();
-  output_types.clear();
-  output_names_allocated_strings.clear();
-  output_tensors.clear();
-  
+  output_names.clear ();
+  output_shapes.clear ();
+  output_types.clear ();
+  output_names_allocated_strings.clear ();
+  output_tensors.clear ();
+
   g_free (model_path);
   model_path = nullptr;
   empty_model = true;
@@ -161,13 +168,13 @@ onnxruntime_subplugin::getTensorDim (tensor_dim &dim, std::vector<int64_t> shape
   size_t i;
 
   if (dims > NNS_TENSOR_RANK_LIMIT) {
-    nns_logw ("Shape rank too high: %zu max: %d", dims, NNS_TENSOR_RANK_LIMIT);
+    nns_loge ("Shape rank too high: %zu max: %d", dims, NNS_TENSOR_RANK_LIMIT);
     return -EINVAL;
   }
 
   /* the order of dimension is reversed at CAPS negotiation */
   for (i = 0; i < dims; i++)
-    dim[i] = shapes[dims - i - 1]; 
+    dim[i] = shapes[dims - i - 1];
 
   /* fill remaining entries with 0 */
   for (i = dims; i < NNS_TENSOR_RANK_LIMIT; ++i) {
@@ -219,16 +226,17 @@ onnxruntime_subplugin::getTensorType (ONNXTensorElementDataType _type, tensor_ty
       res = _NNS_FLOAT64;
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+#ifdef FLOAT16_SUPPORT
       res = _NNS_FLOAT16;
       break;
+#endif
     default:
-      nns_logw ("Tensor type not supported: %d", (gint) _type);
+      nns_loge ("Tensor type not supported: %d", (gint) _type);
       return -EINVAL;
   }
 
   *type = res;
   return 0;
-
 }
 
 /**
@@ -246,7 +254,6 @@ onnxruntime_subplugin::getEmptyInstance ()
 void
 onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop)
 {
-  size_t i;
   Ort::AllocatorWithDefaultOptions allocator;
 
   if (!empty_model) {
@@ -254,9 +261,9 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
 
     if (!prop->model_files[0] || prop->model_files[0][0] == '\0') {
       std::cerr << "Model path is not given." << std::endl;
-      throw std::invalid_argument ("Model path is not given.");
+      throw std::runtime_error ("Model path is not given.");
     }
-    
+
     cleanup ();
   }
 
@@ -265,138 +272,125 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
   if (!g_file_test (prop->model_files[0], G_FILE_TEST_IS_REGULAR)) {
     const std::string err_msg
         = "Given file " + (std::string) prop->model_files[0] + " is not valid";
-    std::cerr << err_msg << std::endl;
     cleanup ();
-    throw std::invalid_argument (err_msg);
+    throw std::runtime_error (err_msg);
   }
 
   model_path = g_strdup (prop->model_files[0]);
 
-  assert (model_path != nullptr);
-
-  if (!g_file_test (prop->model_files[0], G_FILE_TEST_IS_REGULAR)) {
-    const std::string err_msg
-        = "Given file " + (std::string) prop->model_files[0] + " is not valid";
-    std::cerr << err_msg << std::endl;
-    cleanup ();
-    throw std::invalid_argument (err_msg);
-  }
-
   /** Read a model */
-  env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
-  session = Ort::Session(env, model_path, sessionOptions);
-  
-  input_num_tensors = session.GetInputCount();
-  if (input_num_tensors <= 0 || input_num_tensors > NNS_TENSOR_SIZE_LIMIT){
-    cleanup ();
-    throw std::invalid_argument (
-        "The number of tensors required by the given model exceeds the nnstreamer tensor limit (" NNS_TENSOR_SIZE_LIMIT_STR
-        " by default).");
+  env = Ort::Env (ORT_LOGGING_LEVEL_WARNING, "nnstreamer_onnxruntime");
+  session = Ort::Session (env, model_path, sessionOptions);
 
-  }
-  inputInfo.num_tensors = input_num_tensors;
-
-  output_num_tensors = session.GetOutputCount();
+  input_num_tensors = session.GetInputCount ();
   if (input_num_tensors <= 0 || input_num_tensors > NNS_TENSOR_SIZE_LIMIT) {
     cleanup ();
     throw std::invalid_argument (
-        "The number of tensors required by the given model exceeds the nnstreamer tensor limit (" NNS_TENSOR_SIZE_LIMIT_STR
-        " by default).");
+        std::string ("Too many input tensors: ") + std::to_string (input_num_tensors)
+        + std::string ("max: ") + NNS_TENSOR_SIZE_LIMIT_STR);
+  }
+  inputInfo.num_tensors = input_num_tensors;
+
+  output_num_tensors = session.GetOutputCount ();
+  if (output_num_tensors <= 0 || output_num_tensors > NNS_TENSOR_SIZE_LIMIT) {
+    cleanup ();
+    throw std::invalid_argument (std::string ("Too many output tensors: ")
+                                 + std::to_string (output_num_tensors)
+                                 + std::string ("max: ") + NNS_TENSOR_SIZE_LIMIT_STR);
   }
   outputInfo.num_tensors = output_num_tensors;
-  
 
   // initialize input info
-  input_shapes.resize(inputInfo.num_tensors);
-  input_types.resize(inputInfo.num_tensors);
+  input_shapes.resize (inputInfo.num_tensors);
+  input_types.resize (inputInfo.num_tensors);
 
-  for (i = 0; i < inputInfo.num_tensors; i++){
+  for (size_t i = 0; i < inputInfo.num_tensors; i++) {
 
     // Get input names
-    auto input_name = session.GetInputNameAllocated(i, allocator);
-    input_names_allocated_strings.push_back(std::move(input_name));
-    input_names.push_back(input_names_allocated_strings.back().get());
+    auto input_name = session.GetInputNameAllocated (i, allocator);
+    input_names_allocated_strings.push_back (std::move (input_name));
+    input_names.push_back (input_names_allocated_strings.back ().get ());
 
     // Get input types
-    ONNXTensorElementDataType type = 
-                      session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetElementType();
+    ONNXTensorElementDataType type
+        = session.GetInputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetElementType ();
 
     if (getTensorType (type, &inputInfo.info[i].type)) {
-      cleanup();
-      throw std::invalid_argument ("Failed to convert ONNXTensorElement intput data type");
+      cleanup ();
+      throw std::runtime_error ("Failed to convert ONNXTensorElement intput data type");
     }
     input_types[i] = type;
 
     // Get input shapes/dims
-    size_t num_dims = session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetDimensionsCount();
-    input_shapes[i] =  session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+    size_t num_dims
+        = session.GetInputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetDimensionsCount ();
+    input_shapes[i]
+        = session.GetInputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetShape ();
 
     // free dimensions are treated as 1 if not overriden
-    for (int64_t& dim : input_shapes[i]) {
-      if (dim == -1) {
-        dim = 1;
+    for (int64_t &d : input_shapes[i]) {
+      if (d == -1) {
+        d = 1;
       }
     }
 
-    if (getTensorDim (inputInfo.info[i].dimension, input_shapes[i], num_dims)){
-      cleanup();
-      throw std::invalid_argument ("Shape input rank too high.");
+    if (getTensorDim (inputInfo.info[i].dimension, input_shapes[i], num_dims)) {
+      cleanup ();
+      throw std::runtime_error ("Shape input rank too high.");
     }
 
     inputInfo.info[i].name = nullptr;
 
-    gchar *dim;
-    dim = gst_tensor_get_dimension_string (inputInfo.info[i].dimension);
+    g_autofree gchar *dim = gst_tensor_get_dimension_string (inputInfo.info[i].dimension);
 
-    nns_logd ("inputInfo[%zu] >> name[%s], type[%d], dim[%s]", i,
+    nns_logd ("inputInfo[%zu] : name[%s], type[%d], dim[%s]", i,
         inputInfo.info[i].name, inputInfo.info[i].type, dim);
-    g_free (dim);
   }
-  
-  // initialize output info
-  output_shapes.resize(outputInfo.num_tensors);
-  output_types.resize(outputInfo.num_tensors);
 
-  for (i = 0; i < outputInfo.num_tensors; i++){
+  // initialize output info
+  output_shapes.resize (outputInfo.num_tensors);
+  output_types.resize (outputInfo.num_tensors);
+
+  for (size_t i = 0; i < outputInfo.num_tensors; i++) {
 
     // Get output node names
-    auto output_name = session.GetOutputNameAllocated(i, allocator);
-    output_names_allocated_strings.push_back(std::move(output_name));
-    output_names.push_back(output_names_allocated_strings.back().get());
+    auto output_name = session.GetOutputNameAllocated (i, allocator);
+    output_names_allocated_strings.push_back (std::move (output_name));
+    output_names.push_back (output_names_allocated_strings.back ().get ());
 
     // Get output node types
-    ONNXTensorElementDataType type = 
-                      session.GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetElementType();
+    ONNXTensorElementDataType type
+        = session.GetOutputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetElementType ();
 
     if (getTensorType (type, &outputInfo.info[i].type)) {
-      cleanup();
-      throw std::invalid_argument ("Failed to convert ONNXTensorElement output data type");
+      cleanup ();
+      throw std::runtime_error ("Failed to convert ONNXTensorElement output data type");
     }
     output_types[i] = type;
 
     // Get output shapes/dims
-    size_t num_dims = session.GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetDimensionsCount();
-    output_shapes[i] =  session.GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+    size_t num_dims
+        = session.GetOutputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetDimensionsCount ();
+    output_shapes[i]
+        = session.GetOutputTypeInfo (i).GetTensorTypeAndShapeInfo ().GetShape ();
 
     // free dimensions are treated as 1 if not overriden
-    for (int64_t& dim : output_shapes[i]) {
-      if (dim == -1) {
-        dim = 1;
+    for (int64_t &d : output_shapes[i]) {
+      if (d == -1) {
+        d = 1;
       }
     }
 
-    if (getTensorDim (outputInfo.info[i].dimension, output_shapes[i], num_dims)){
-      cleanup();
-      throw std::invalid_argument ("Shape output rank too high.");
+    if (getTensorDim (outputInfo.info[i].dimension, output_shapes[i], num_dims)) {
+      cleanup ();
+      throw std::runtime_error ("Shape output rank too high.");
     }
     outputInfo.info[i].name = nullptr;
 
-    gchar *dim;
-    dim = gst_tensor_get_dimension_string (outputInfo.info[i].dimension);
+    g_autofree gchar *dim = gst_tensor_get_dimension_string (outputInfo.info[i].dimension);
 
-    nns_logd ("outputInfo[%zu] >> name[%s], type[%d], dim[%s]", i,
+    nns_logd ("outputInfo[%zu] : name[%s], type[%d], dim[%s]", i,
         outputInfo.info[i].name, outputInfo.info[i].type, dim);
-    g_free (dim);
   }
 
   empty_model = false;
@@ -412,13 +406,13 @@ onnxruntime_subplugin::invoke (const GstTensorMemory *input, GstTensorMemory *ou
   size_t i;
   assert (!empty_model);
 
-  input_tensors.clear();
-  output_tensors.clear();
+  input_tensors.clear ();
+  output_tensors.clear ();
 
-  memInfo =
-      Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
+  memInfo = Ort::MemoryInfo::CreateCpu (
+      OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
 
-  assert (input_shapes.size() == inputInfo.num_tensors);
+  assert (input_shapes.size () == inputInfo.num_tensors);
 
   if (!input)
     throw std::runtime_error ("Invalid input buffer, it is NULL.");
@@ -427,32 +421,35 @@ onnxruntime_subplugin::invoke (const GstTensorMemory *input, GstTensorMemory *ou
 
   // Set input to tensor
   for (i = 0; i < inputInfo.num_tensors; ++i) {
-    input_tensors.emplace_back(Ort::Value::CreateTensor(memInfo, input[i].data, 
-                                input[i].size, input_shapes[i].data(),
-                                input_shapes[i].size(), input_types[i]));
+    input_tensors.emplace_back (Ort::Value::CreateTensor (memInfo, input[i].data,
+        input[i].size, input_shapes[i].data (), input_shapes[i].size (), input_types[i]));
   }
 
   // double-check the dimensions of the input tensor
-  assert(input_tensors[0].IsTensor() && input_tensors[0].GetTensorTypeAndShapeInfo().GetShape() == input_shapes[0]);
-  
+  assert (input_tensors[0].IsTensor ()
+          && input_tensors[0].GetTensorTypeAndShapeInfo ().GetShape () == input_shapes[0]);
+
   // Set output to tensor
-  for(i = 0; i < outputInfo.num_tensors; ++i){
-    output_tensors.emplace_back(Ort::Value::CreateTensor(memInfo, output[i].data, output[i].size,
-                                                     output_shapes[i].data(), output_shapes[i].size(), output_types[i]));
+  for (i = 0; i < outputInfo.num_tensors; ++i) {
+    output_tensors.emplace_back (
+        Ort::Value::CreateTensor (memInfo, output[i].data, output[i].size,
+            output_shapes[i].data (), output_shapes[i].size (), output_types[i]));
   }
 
   try {
     // call Run() to fill in the GstTensorMemory *output data with the probabilities of each
-    session.Run(Ort::RunOptions{nullptr}, input_names.data(), input_tensors.data(), input_names.size(), 
-                output_names.data(), output_tensors.data(), output_names.size());
+    session.Run (Ort::RunOptions{ nullptr }, input_names.data (),
+        input_tensors.data (), input_names.size (), output_names.data (),
+        output_tensors.data (), output_names.size ());
 
     // double-check the dimensions of the output tensor
-    assert(output_tensors.size() == output_names.size() && output_tensors[0].IsTensor());
+    assert (output_tensors.size () == output_names.size () && output_tensors[0].IsTensor ());
 
-  } catch (const Ort::Exception& exception) {
-      std::cerr <<  "ERROR running model inference: " << exception.what() << std::endl;
-      cleanup ();
-      throw std::invalid_argument ("exception.");
+  } catch (const Ort::Exception &exception) {
+    const std::string err_msg
+        = "ERROR running model inference: " + (std::string) exception.what ();
+    cleanup ();
+    throw std::runtime_error (err_msg);
   }
 }
 
@@ -498,14 +495,12 @@ onnxruntime_subplugin::eventHandler (event_ops ops, GstTensorFilterFrameworkEven
 
 onnxruntime_subplugin *onnxruntime_subplugin::registeredRepresentation = nullptr;
 
-
+/** @brief Initialize this object for tensor_filter subplugin runtime register */
 void
 onnxruntime_subplugin::init_filter_onnxruntime ()
 {
   registeredRepresentation
       = tensor_filter_subplugin::register_subplugin<onnxruntime_subplugin> ();
-
-      
 }
 
 /**
@@ -523,7 +518,7 @@ void
 init_filter_onnxruntime ()
 {
   onnxruntime_subplugin::init_filter_onnxruntime ();
-    if (nnstreamer_filter_find ("onnx")) {
+  if (nnstreamer_filter_find ("onnx")) {
     nns_loge ("Cannot use onnxruntime and onnx both. Won't register this onnxruntime subplugin.");
     return;
   }
