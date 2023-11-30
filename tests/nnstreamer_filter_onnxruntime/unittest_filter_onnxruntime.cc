@@ -11,7 +11,6 @@
 
 #include <gtest/gtest.h>
 #include <glib.h>
-#include <glib/gstdio.h> /* GStatBuf */
 #include <gst/gst.h>
 
 #include <nnstreamer_plugin_api_filter.h>
@@ -21,8 +20,6 @@
 #include "nnstreamer_plugin_api.h"
 #include "nnstreamer_plugin_api_util.h"
 
-#define GTEST_COUT std::cerr << "[   INFO   ] "
-
 /**
  * @brief internal function to get model filename
  */
@@ -30,15 +27,11 @@ static gboolean
 _GetModelFilePath (gchar **model_file)
 {
   const gchar *src_root = g_getenv ("NNSTREAMER_SOURCE_ROOT_PATH");
-  gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
+  g_autofree gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
   std::string model_name = "mobilenet_v2_quant.onnx";
 
   *model_file = g_build_filename (
       root_path, "tests", "test_models", "models", model_name.c_str (), NULL);
-
-  GTEST_COUT << "model path = " << *model_file << std::endl;
-
-  g_free (root_path);
 
   return g_file_test (*model_file, G_FILE_TEST_EXISTS);
 }
@@ -50,13 +43,11 @@ static gboolean
 _GetOrangePngFilePath (gchar **input_file)
 {
   const gchar *src_root = g_getenv ("NNSTREAMER_SOURCE_ROOT_PATH");
-  gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
+  g_autofree gchar *root_path = src_root ? g_strdup (src_root) : g_get_current_dir ();
   std::string input_file_name = "orange.png";
 
   *input_file = g_build_filename (
       root_path, "tests", "test_models", "data", input_file_name.c_str (), NULL);
-
-  g_free (root_path);
 
   return g_file_test (*input_file, G_FILE_TEST_EXISTS);
 }
@@ -90,7 +81,7 @@ check_output (GstElement *element, GstBuffer *buffer, gpointer user_data)
   ASSERT_TRUE (mapped);
 
   gint is_float = (gint) * ((guint8 *) user_data);
-  guint idx, max_idx = -1;
+  guint idx, max_idx = 0U;
 
   if (is_float == 0) {
     guint8 *output = (guint8 *) info_res.data;
@@ -107,20 +98,18 @@ check_output (GstElement *element, GstBuffer *buffer, gpointer user_data)
     gfloat max_value = G_MINFLOAT;
 
     for (idx = 0; idx < (info_res.size / sizeof (gfloat)); ++idx) {
-
       if (output[idx] > max_value) {
-
         max_value = output[idx];
         max_idx = idx;
       }
     }
-  } else {
-    ASSERT_TRUE (1 == 0);
   }
+
+  gst_memory_unmap (mem_res, &info_res);
+  gst_memory_unref (mem_res);
 
   EXPECT_EQ (max_idx, 951U);
 }
-
 
 /**
  * @brief Negative test case with invalid model file path
@@ -134,10 +123,11 @@ TEST (nnstreamerFilterOnnxRuntime, openClose00)
     "some/invalid/model/path.onnx",
     NULL,
   };
+
   const GstTensorFilterFramework *sp = nnstreamer_filter_find ("onnxruntime");
   EXPECT_NE (sp, nullptr);
-  GstTensorFilterProperties prop;
 
+  GstTensorFilterProperties prop;
   _SetFilterProp (&prop, "onnxruntime", model_files);
 
   ret = sp->open (&prop, &data);
@@ -164,7 +154,6 @@ TEST (nnstreamerFilterOnnxRuntime, getModelInfo00)
   EXPECT_NE (sp, nullptr);
 
   GstTensorFilterProperties prop;
-
   _SetFilterProp (&prop, "onnxruntime", model_files);
 
   ret = sp->open (&prop, &data);
@@ -178,7 +167,7 @@ TEST (nnstreamerFilterOnnxRuntime, getModelInfo00_1)
 {
   int ret;
   void *data = NULL;
-  gchar *model_file;
+  g_autofree gchar *model_file = NULL;
 
   ASSERT_TRUE (_GetModelFilePath (&model_file));
 
@@ -191,7 +180,6 @@ TEST (nnstreamerFilterOnnxRuntime, getModelInfo00_1)
   EXPECT_NE (sp, nullptr);
 
   GstTensorFilterProperties prop;
-
   _SetFilterProp (&prop, "onnxruntime", model_files);
 
   ret = sp->open (&prop, &data);
@@ -220,7 +208,6 @@ TEST (nnstreamerFilterOnnxRuntime, getModelInfo00_1)
 
   gst_tensors_info_free (&in_info);
   gst_tensors_info_free (&out_info);
-  g_free (model_file);
 }
 
 /**
@@ -231,8 +218,7 @@ TEST (nnstreamerFilterOnnxRuntime, invoke00)
   int ret;
   void *data = NULL;
   GstTensorMemory input, output;
-  gchar *model_file;
-  GstTensorFilterProperties prop;
+  g_autofree gchar *model_file = NULL;
 
   ASSERT_TRUE (_GetModelFilePath (&model_file));
 
@@ -243,6 +229,8 @@ TEST (nnstreamerFilterOnnxRuntime, invoke00)
 
   const GstTensorFilterFramework *sp = nnstreamer_filter_find ("onnxruntime");
   ASSERT_TRUE (sp != nullptr);
+
+  GstTensorFilterProperties prop;
   _SetFilterProp (&prop, "onnxruntime", model_files);
 
   input.size = sizeof (float) * 224 * 224 * 3 * 1;
@@ -254,18 +242,15 @@ TEST (nnstreamerFilterOnnxRuntime, invoke00)
   ret = sp->open (&prop, &data);
   EXPECT_EQ (ret, 0);
 
-  /** invoke successful */
-  ret = sp->invoke (NULL, NULL, data, &input, &output);
+  /* invoke successful */
+  ret = sp->invoke (NULL, &prop, data, &input, &output);
   EXPECT_EQ (ret, 0);
 
   g_free (input.data);
   g_free (output.data);
 
   sp->close (&prop, &data);
-
-  g_free (model_file);
 }
-
 
 /**
  * @brief Negative case with invalid input/output
@@ -275,8 +260,7 @@ TEST (nnstreamerFilterOnnxRuntime, invoke01_n)
   int ret;
   void *data = NULL;
   GstTensorMemory input, output;
-  gchar *model_file;
-  GstTensorFilterProperties prop;
+  g_autofree gchar *model_file = NULL;
 
   ASSERT_TRUE (_GetModelFilePath (&model_file));
 
@@ -287,6 +271,8 @@ TEST (nnstreamerFilterOnnxRuntime, invoke01_n)
 
   const GstTensorFilterFramework *sp = nnstreamer_filter_find ("onnxruntime");
   ASSERT_TRUE (sp != nullptr);
+
+  GstTensorFilterProperties prop;
   _SetFilterProp (&prop, "onnxruntime", model_files);
 
   output.size = input.size = sizeof (float) * 1;
@@ -297,29 +283,27 @@ TEST (nnstreamerFilterOnnxRuntime, invoke01_n)
   EXPECT_EQ (ret, 0);
 
   /* catching exception */
-  EXPECT_NE (sp->invoke (NULL, NULL, data, NULL, &output), 0);
-  EXPECT_NE (sp->invoke (NULL, NULL, data, &input, NULL), 0);
+  EXPECT_NE (sp->invoke (NULL, &prop, data, NULL, &output), 0);
+  EXPECT_NE (sp->invoke (NULL, &prop, data, &input, NULL), 0);
 
   g_free (input.data);
   g_free (output.data);
   sp->close (&prop, &data);
-  g_free (model_file);
 }
-
 
 /**
  * @brief Negative case to launch gst pipeline: wrong dimension
  */
 TEST (nnstreamerFilterOnnxRuntime, launch00_n)
 {
-  gchar *pipeline;
   GstElement *gstpipe;
   GError *err = NULL;
-  gchar *model_file;
+  g_autofree gchar *model_file = NULL;
+
   ASSERT_TRUE (_GetModelFilePath (&model_file));
 
   /* create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc num-buffers=10 ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=42,height=42,framerate=0/1 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" latency=1 ! tensor_sink",
+  g_autofree gchar *pipeline = g_strdup_printf ("videotestsrc num-buffers=10 ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=42,height=42,framerate=0/1 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" latency=1 ! tensor_sink",
       model_file);
 
   gstpipe = gst_parse_launch (pipeline, &err);
@@ -328,8 +312,6 @@ TEST (nnstreamerFilterOnnxRuntime, launch00_n)
   EXPECT_NE (setPipelineStateSync (gstpipe, GST_STATE_PLAYING, UNITTEST_STATECHANGE_TIMEOUT), 0);
 
   gst_object_unref (gstpipe);
-  g_free (pipeline);
-  g_free (model_file);
 }
 
 /**
@@ -337,14 +319,14 @@ TEST (nnstreamerFilterOnnxRuntime, launch00_n)
  */
 TEST (nnstreamerFilterOnnxRuntime, launch01_n)
 {
-  gchar *pipeline;
   GstElement *gstpipe;
   GError *err = NULL;
-  gchar *model_file;
+  g_autofree gchar *model_file = NULL;
+
   ASSERT_TRUE (_GetModelFilePath (&model_file));
 
   /* create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc num-buffers=10 ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=224,height=224,framerate=0/1 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" latency=1 ! tensor_sink",
+  g_autofree gchar *pipeline = g_strdup_printf ("videotestsrc num-buffers=10 ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=224,height=224,framerate=0/1 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" latency=1 ! tensor_sink",
       model_file);
 
   gstpipe = gst_parse_launch (pipeline, &err);
@@ -353,8 +335,6 @@ TEST (nnstreamerFilterOnnxRuntime, launch01_n)
   EXPECT_NE (setPipelineStateSync (gstpipe, GST_STATE_PLAYING, UNITTEST_STATECHANGE_TIMEOUT), 0);
 
   gst_object_unref (gstpipe);
-  g_free (pipeline);
-  g_free (model_file);
 }
 
 /**
@@ -362,16 +342,16 @@ TEST (nnstreamerFilterOnnxRuntime, launch01_n)
  */
 TEST (nnstreamerFilterOnnxRuntime, floatModelResult)
 {
-  gchar *pipeline;
   GstElement *gstpipe;
   GError *err = NULL;
-  gchar *model_file, *input_file;
+  g_autofree gchar *model_file = NULL;
+  g_autofree gchar *input_file = NULL;
 
   ASSERT_TRUE (_GetModelFilePath (&model_file));
   ASSERT_TRUE (_GetOrangePngFilePath (&input_file));
 
-  // create a nnstreamer pipeline
-  pipeline = g_strdup_printf ("filesrc location=\"%s\" ! pngdec ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=224,height=224,framerate=0/1 ! tensor_converter ! tensor_transform mode=transpose option=1:2:0:3 ! tensor_transform mode=arithmetic option=typecast:float32,div:127.5,add:-1.0 ! tensor_filter framework=onnxruntime model=\"%s\" ! tensor_sink name=sink",
+  /* create a nnstreamer pipeline */
+  g_autofree gchar *pipeline = g_strdup_printf ("filesrc location=\"%s\" ! pngdec ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=224,height=224,framerate=0/1 ! tensor_converter ! tensor_transform mode=transpose option=1:2:0:3 ! tensor_transform mode=arithmetic option=typecast:float32,div:127.5,add:-1.0 ! tensor_filter framework=onnxruntime model=\"%s\" ! tensor_sink name=sink",
       input_file, model_file);
 
   gstpipe = gst_parse_launch (pipeline, &err);
@@ -392,9 +372,6 @@ TEST (nnstreamerFilterOnnxRuntime, floatModelResult)
 
   gst_object_unref (sink_handle);
   gst_object_unref (gstpipe);
-  g_free (pipeline);
-  g_free (model_file);
-  g_free (input_file);
 }
 
 /**
@@ -402,22 +379,19 @@ TEST (nnstreamerFilterOnnxRuntime, floatModelResult)
  */
 TEST (nnstreamerFilterOnnxRuntime, error00_n)
 {
-  gchar *pipeline;
   GstElement *gstpipe;
   GError *err = NULL;
   int status = 0;
   const gchar *root_path = g_getenv ("NNSTREAMER_SOURCE_ROOT_PATH");
-  gchar *model_file = g_build_filename (
+  g_autofree gchar *model_file = g_build_filename (
       root_path, "tests", "test_models", "models", "incorrect_path.onnx", NULL);
 
   /* Create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=224,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
+  g_autofree gchar *pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=224,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
       model_file);
   gstpipe = gst_parse_launch (pipeline, &err);
 
   if (gstpipe) {
-    status = 0;
-
     EXPECT_NE (gst_element_set_state (gstpipe, GST_STATE_PLAYING), GST_STATE_CHANGE_SUCCESS);
     EXPECT_EQ (gst_element_set_state (gstpipe, GST_STATE_PLAYING), GST_STATE_CHANGE_FAILURE);
     g_usleep (500000);
@@ -427,14 +401,11 @@ TEST (nnstreamerFilterOnnxRuntime, error00_n)
     gst_object_unref (gstpipe);
   } else {
     status = -1;
-    g_printerr ("GST PARSE LAUNCH FAILED: [%s], %s\n", pipeline,
+    ml_loge ("GST PARSE LAUNCH FAILED: [%s], %s\n", pipeline,
         (err) ? err->message : "unknown reason");
     g_clear_error (&err);
   }
   EXPECT_EQ (status, 0);
-
-  g_free (model_file);
-  g_free (pipeline);
 }
 
 /**
@@ -442,27 +413,26 @@ TEST (nnstreamerFilterOnnxRuntime, error00_n)
  */
 TEST (nnstreamerFilterOnnxRuntime, error01_n)
 {
-  gchar *pipeline;
   GstElement *gstpipe;
   GError *err = NULL;
   int status = 0;
-  gchar *test_model;
+  g_autofree gchar *model_file = NULL;
 
-  ASSERT_TRUE (_GetModelFilePath (&test_model));
+  ASSERT_TRUE (_GetModelFilePath (&model_file));
 
   /* Create a nnstreamer pipeline */
-  pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=240,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
-      test_model);
+  g_autofree gchar *pipeline = g_strdup_printf ("videotestsrc ! videoconvert ! videoscale ! videorate ! video/x-raw,format=RGB,width=240,height=224 ! tensor_converter ! tensor_filter framework=onnxruntime model=\"%s\" ! fakesink",
+      model_file);
 
   gstpipe = gst_parse_launch (pipeline, &err);
   if (gstpipe) {
-    status = 0;
     GstState state, pending;
 
     EXPECT_NE (gst_element_set_state (gstpipe, GST_STATE_PLAYING), GST_STATE_CHANGE_SUCCESS);
     g_usleep (500000);
+    /* This should fail: dimension mismatched. */
     EXPECT_EQ (gst_element_get_state (gstpipe, &state, &pending, GST_SECOND / 4),
-        GST_STATE_CHANGE_FAILURE); // This should fail: dimension mismatched.
+        GST_STATE_CHANGE_FAILURE);
 
     EXPECT_NE (gst_element_set_state (gstpipe, GST_STATE_NULL), GST_STATE_CHANGE_FAILURE);
     g_usleep (100000);
@@ -470,13 +440,11 @@ TEST (nnstreamerFilterOnnxRuntime, error01_n)
     gst_object_unref (gstpipe);
   } else {
     status = -1;
-    g_printerr ("GST PARSE LAUNCH FAILED: [%s], %s\n", pipeline,
+    ml_loge ("GST PARSE LAUNCH FAILED: [%s], %s\n", pipeline,
         (err) ? err->message : "unknown reason");
     g_clear_error (&err);
   }
   EXPECT_EQ (status, 0);
-  g_free (test_model);
-  g_free (pipeline);
 }
 
 /**
