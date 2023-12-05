@@ -476,17 +476,12 @@ features = {
     'extra_deps': [ json_glib_dep ],
   },
   'ml-agent-support': {
-<<<<<<< HEAD
-    'extra_deps': [ ml_agent_dep ],
-    'project_args': { 'ENABLE_ML_AGENT' : 1 }
-=======
     'extra_deps': [ ml_agentd_dep ],
     'project_args': { 'ENABLE_ML_AGENTD' : 1 }
   },
   'onnxruntime-support': {
     'target': 'libonnxruntime',
     'project_args': { 'ENABLE_ONNXRUNTIME': 1 }
->>>>>>> temp commit for onnx
   }
 }
 
