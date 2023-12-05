@@ -93,7 +93,7 @@ class onnxruntime_subplugin final : public tensor_filter_subplugin
  * @brief Constructor for onnxruntime_subplugin.
  */
 onnxruntime_subplugin::onnxruntime_subplugin ()
-    : session{ nullptr }, sessionOptions{ nullptr }, env{ nullptr }, memInfo{ nullptr }
+    : configured{ false }, session{ nullptr }, sessionOptions{ nullptr }, env{ nullptr }, memInfo{ nullptr }
 {
 }
 
@@ -112,21 +112,10 @@ onnxruntime_subplugin::cleanup ()
   if (!configured)
     return; /* Nothing to do if it is an empty model */
 
-  if (session) {
-    session = Ort::Session{ nullptr }; /* it's already freed with session */
-  }
-
-  if (sessionOptions) {
-    sessionOptions = Ort::SessionOptions{ nullptr };
-  }
-
-  if (env) {
-    env = Ort::Env{ nullptr };
-  }
-
-  if (memInfo) {
-    memInfo = Ort::MemoryInfo{ nullptr }; /* it's already freed with meminfo */
-  }
+  session = Ort::Session{ nullptr };
+  sessionOptions = Ort::SessionOptions{ nullptr };
+  env = Ort::Env{ nullptr };
+  memInfo = Ort::MemoryInfo{ nullptr };
 
   clearNodeInfo (inputNode);
   clearNodeInfo (outputNode);
@@ -157,6 +146,8 @@ void
 onnxruntime_subplugin::convertTensorInfo (onnx_node_info_s &node, GstTensorsInfo &info)
 {
   GstTensorInfo *_info;
+
+  gst_tensors_info_init (std::addressof (info));
 
   info.num_tensors = (unsigned int) node.count;
 
@@ -322,7 +313,8 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
     inputNode.names.push_back (inputNode.names_allocated_strings.back ().get ());
 
     /* Get input type and shape */
-    auto tensor_info = session.GetInputTypeInfo (i).GetTensorTypeAndShapeInfo ();
+    Ort::TypeInfo type_info = session.GetInputTypeInfo (i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo ();
     inputNode.types.push_back (tensor_info.GetElementType ());
     inputNode.shapes.push_back (tensor_info.GetShape ());
   }
@@ -337,7 +329,8 @@ onnxruntime_subplugin::configure_instance (const GstTensorFilterProperties *prop
     outputNode.names.push_back (outputNode.names_allocated_strings.back ().get ());
 
     /* Get output type and shape */
-    auto tensor_info = session.GetOutputTypeInfo (i).GetTensorTypeAndShapeInfo ();
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo (i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo ();
     outputNode.types.push_back (tensor_info.GetElementType ());
     outputNode.shapes.push_back (tensor_info.GetShape ());
   }
